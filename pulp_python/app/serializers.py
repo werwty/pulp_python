@@ -175,8 +175,14 @@ class PythonImporterSerializer(platform.ImporterSerializer):
         validators = platform.ImporterSerializer.Meta.validators + [myValidator1, myValidator2]
     """
 
+    project_names = serializers.ListField(
+        child = serializers.CharField(),
+        required = False, default = [],
+        help_text = _('A list of project names to sync.')
+    )
+
     class Meta:
-        fields = platform.ImporterSerializer.Meta.fields
+        fields = platform.ImporterSerializer.Meta.fields + ('project_names',)
         model = models.PythonImporter
         validators = platform.ImporterSerializer.Meta.validators
 
