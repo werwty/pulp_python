@@ -1,23 +1,41 @@
 sudo: required
-# https://docs.travis-ci.com/user/trusty-ci-environment/
 dist: trusty
 language: python
 python:
-    # python versions used in el7 SCL & supported fedora
-    - "3.5"
-    - "3.6"
+- '3.5'
+- '3.6'
 env:
+  matrix:
   - DB=postgres
 addons:
-    # postgres versions provided by el7 RHSCL (lowest supportable version)
-    postgresql: "9.5"
+  postgresql: '9.5'
 services:
-    - postgresql
-    - rabbitmq
+- postgresql
+- rabbitmq
 install: source .travis/install.sh
+
 before_script: source .travis/before_script.sh
 script: source .travis/script.sh
 after_failure:
-  - sh -c "cat ~/django_runserver.log"
-  - sh -c "cat ~/resource_manager.log"
-  - sh -c "cat ~/reserved_workers-1.log"
+- sh -c "cat ~/django_runserver.log"
+- sh -c "cat ~/resource_manager.log"
+- sh -c "cat ~/reserved_workers-1.log"
+
+stages:
+- name: test
+- name: deploy
+  if: tag =~ ^3.0.0*
+
+jobs:
+  include:
+  - stage: deploy
+    script: skip
+    deploy:
+      provider: pypi
+      server: https://test.pypi.org/legacy/
+      distributions: sdist bdist_wheel
+      user: bizhang
+      password:
+        secure: wLHTfPFSAm03yYqhZUj7ClpXIxJ8Xve3kng7D9iT2GoPoFIFvAAHMoIfM+3cB14popMvz1I7F8Za5BUauXTMzod8al9aHsBJ2yor/17YiJ2WFb0W53Ksbwxi1Sp7kklyZP9KnVcf08fuRtzNSmKqABVDmf/47Vx2PXDfvwQpnqA5WhvhfLFOpBDLRFtMbPZ88zzoIVDfTbJ4IpEtHy+iTBWgq5AAYmsdRqNBHuRUKckTh2iaJBB4fWQG028Ria8hrScVIYufpCp8vRx22K7HmzYnwTmZDNIq4O8AmSbDGM3LlGe9M9dXrVL6Rv5/yFUV1mR5/0UIBkky+wduO7cy50F2vqF/BpaRgRZ0hEARtTq2qBU8eh3VmhJOmQdmlHomEi2mr4poGCILEJyw/QZtXfQpxz7OgFYT5U3qH3uD7A8kOI8IUEPfdlH0IeG9ozompRzFuPzOAykfKWU6m+bqkE64zVnSA79O5M9vHh2Dpz87oBdKYjKtIPACs8TBVFlpkDQX+WDROWT8v1nL2RYewnVsNzy7YxGiraskkAY8vj10rK/3AS/UG/Nc4C4H9kkbjFIdFF/jAbQqYS5RfqSVWjRhswJ6odN2A2mL8LKlCbEyncolGTFCzjt1x9dKq8np7AGTqTUv0n0w5dN0hD4933k9alt36aDp7bQIWCLNs08=
+      on:
+        tags: true
