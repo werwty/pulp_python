@@ -34,6 +34,45 @@ class Classifier(Model):
                                                on_delete=models.CASCADE)
 
 
+class DistributionDigest(Model):
+    """
+    A model of digests on an individual distribution.
+    """
+    type = models.TextField()
+    digest = models.TextField()
+    project_specifier = models.ForeignKey("ProjectSpecifier",
+                                          related_name="digests",
+                                          related_query_name="distributiondigest",
+                                          on_delete=models.CASCADE)
+
+
+class ProjectSpecifier(Model):
+    """
+    A specifier of a python project dependency.
+
+    Example:
+
+        version==1.0.0 will sync all distributions matching version
+        version~=1.0.0 will sync all major version 1 distributions
+        version==1.0.0 digests=["sha256:0000"] will only sync the distributions matching the hash
+        name=projectname without specifiers will sync every distribution in the project.
+
+    Fields:
+
+        project_name (models.TextField): The name of a python project
+        version (modles.TextField): A filter for the versions to sync
+        digests (models.CharField): A json list of hashes of a distribution to sync
+        remote (models.ForeignKey): The remote this project specifier is associated with
+    """
+
+    name = models.TextField()
+    version_specifier = models.TextField(blank=True, default="")
+    remote = models.ForeignKey("PythonRemote",
+                               related_name="projects",
+                               related_query_name="projectspecifier",
+                               on_delete=models.CASCADE)
+
+
 class PythonPackageContent(Content):
     """
     A Content Type representing Python's Distribution Package as
@@ -104,4 +143,3 @@ class PythonRemote(Remote):
     """
 
     TYPE = 'python'
-    projects = models.TextField()

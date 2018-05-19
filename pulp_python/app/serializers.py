@@ -1,5 +1,6 @@
 from gettext import gettext as _
 
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework_nested.relations import NestedHyperlinkedRelatedField
 from pulpcore.plugin import models as core_models
@@ -20,6 +21,50 @@ class ClassifierSerializer(serializers.ModelSerializer):
     class Meta:
         model = python_models.Classifier
         fields = ('name',)
+
+
+class DistributionDigestSerializer(serializers.ModelSerializer):
+    """
+    A serializer for the Distribution Digest in a Project Specifier
+    """
+    type = serializers.CharField(
+        help_text=_("A type of digest: i.e. sha256, md5")
+    )
+
+    digest = serializers.CharField(
+        help_text=_("The digest of the distribution")
+    )
+
+    class Meta:
+        model = python_models.DistributionDigest
+        fields = ('type', 'digest')
+
+
+class ProjectSpecifierSerializer(serializers.ModelSerializer):
+    """
+    A serializer for Python project specifiers
+    """
+
+    name = serializers.CharField(
+        help_text=_("A python project name.")
+    )
+
+    version_specifier = serializers.CharField(
+        help_text=_("A version specifier, accepts standard python versions "
+                    "syntax: >=, <=, ==, ~=, >, <, can be used in conjunction with"
+                    "multiple specifiers like "),
+        required=False,
+        allow_blank=True
+    )
+
+    digests = DistributionDigestSerializer(
+        required=False,
+        many=True
+    )
+
+    class Meta:
+        model = python_models.ProjectSpecifier
+        fields = ('name', 'version_specifier', 'digests')
 
 
 class PythonPackageContentSerializer(core_serializers.ContentSerializer):
@@ -141,10 +186,7 @@ class PythonPackageContentSerializer(core_serializers.ContentSerializer):
     def create(self, validated_data):
         """
         Creates a PythonPackageContent
-
         Overriding default create() to write the classifiers nested field
-        :param validated_data:
-        :return:
         """
 
         classifiers = validated_data.pop('classifiers')
@@ -178,14 +220,62 @@ class PythonRemoteSerializer(core_serializers.RemoteSerializer):
     A Serializer for PythonRemote.
     """
 
-    projects = serializers.CharField(
-        required=True,
-        help_text=_('A JSON list of project names to sync.')
+    projects = ProjectSpecifierSerializer(
+        required=False,
+        many=True
     )
 
     class Meta:
         fields = core_serializers.RemoteSerializer.Meta.fields + ('projects',)
         model = python_models.PythonRemote
+
+    @transaction.atomic
+    def update(self, instance, validated_data, partial=False):
+        """
+        Updates a PythonRemote
+        Overriding default update() to write the projects nested field
+        """
+
+        projects = validated_data.pop('projects', [])
+
+        python_remote = python_models.PythonRemote.objects.get(pk=instance.pk)
+
+        # Remove all project specifier related by foreign key to the remote if it is not a
+        # partial update or if new projects list has been passed
+        if not partial or projects:
+            python_models.ProjectSpecifier.objects.filter(remote=python_remote).delete()
+
+        for project in projects:
+            digests = project.pop('digests', None)
+            specifier = python_models.ProjectSpecifier.objects.create(remote=python_remote,
+                                                                      **project)
+            if digests:
+                for digest in digests:
+                    python_models.DistributionDigest.objects.create(project_specifier=specifier,
+                                                                    **digest)
+
+        return super().update(instance, validated_data)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        """
+        Creates a PythonRemote
+        Overriding default create() to write the projects nested field, and the nested digest field
+        """
+
+        projects = validated_data.pop('projects')
+
+        python_remote = python_models.PythonRemote.objects.create(**validated_data)
+        for project in projects:
+            digests = project.pop('digests', None)
+            specifier = python_models.ProjectSpecifier.objects.create(remote=python_remote,
+                                                                      **project)
+            if digests:
+                for digest in digests:
+                    python_models.DistributionDigest.objects.create(project_specifier=specifier,
+                                                                    **digest)
+
+        return python_remote
 
 
 class PythonPublisherSerializer(core_serializers.PublisherSerializer):

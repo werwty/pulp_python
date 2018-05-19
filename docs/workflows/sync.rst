@@ -35,8 +35,10 @@ You can use any Python remote to sync content into any repository::
 
     $ http POST $BASE_ADDR/pulp/api/v3/remotes/python/ \
         name='bar' \
-        url='https://repos.fedorapeople.org/repos/pulp/pulp/fixtures/python-pypi/' \
-        projects='["shelf-reader"]'
+        url='https://pypi.org/' \
+        projects:='[{"name": "django", "version_specifier":"~=2.0",
+        "digests":[{"type":"sha256", "digest":"3d9916515599f757043c690ae2b5ea28666afa09779636351da505396cbb2f19"}]},
+        {"name":"pip-tools", "version_specifier":">=1.12,<=2.0"}]'
 
 Response::
 
