@@ -51,8 +51,8 @@ class ProjectSpecifierSerializer(serializers.ModelSerializer):
 
     version_specifier = serializers.CharField(
         help_text=_("A version specifier, accepts standard python versions "
-                    "syntax: >=, <=, ==, ~=, >, <, can be used in conjunction with"
-                    "multiple specifiers like "),
+                    "syntax: >=, <=, ==, ~=, >, <, ! can be used in conjunction with"
+                    "other specifiers i.e. >1,<=3,!=3.0.2"),
         required=False,
         allow_blank=True
     )

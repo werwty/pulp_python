@@ -36,9 +36,23 @@ You can use any Python remote to sync content into any repository::
     $ http POST $BASE_ADDR/pulp/api/v3/remotes/python/ \
         name='bar' \
         url='https://pypi.org/' \
-        projects:='[{"name": "django", "version_specifier":"~=2.0",
-        "digests":[{"type":"sha256", "digest":"3d9916515599f757043c690ae2b5ea28666afa09779636351da505396cbb2f19"}]},
-        {"name":"pip-tools", "version_specifier":">=1.12,<=2.0"}]'
+        projects:='[ \
+            { "name": "django", \
+              "version_specifier": "~=2.0", \
+              "digests":[
+                    {"type": "sha256", \
+                     "digest": "3d9916515599f757043c690ae2b5ea28666afa09779636351da505396cbb2f19"} \
+              ] \
+            }, \
+            {"name": "pip-tools", \
+             "version_specifier": ">=1.12,<=2.0"}, \
+            {"name": "scipy", \
+             "digests":[ \
+                {"type": "md5", \
+                "digest": "044af71389ac2ad3d3ece24d0baf4c07"}, \
+                {"type": "sha256", \
+                "digest": "18b572502ce0b17e3b4bfe50dcaea414a98290358a2fa080c36066ba0651ec14"}] \
+        ]'
 
 Response::
 
