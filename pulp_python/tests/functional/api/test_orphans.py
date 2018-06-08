@@ -5,15 +5,14 @@ from random import choice
 from pulp_smash import api, cli, config, utils
 from pulp_smash.exceptions import CalledProcessError
 from pulp_smash.tests.pulp3.constants import ARTIFACTS_PATH, REPO_PATH
-from pulp_smash.tests.pulp3.utils import (get_auth, get_content, get_repo_versions,  # noqa
-                                          delete_orphans, delete_repo_version, sync_repo)
-from pulp_smash.tests.pulp3.pulpcore.utils import gen_repo
+from pulp_smash.tests.pulp3.utils import (gen_repo, get_auth, get_content, get_versions,
+                                          delete_orphans, delete_version, sync)
 
 
 from pulp_python.tests.functional.constants import (PYTHON_PYPI_URL, PYTHON_REMOTE_PATH,
                                                     PYTHON_CONTENT_PATH)
-from pulp_python.tests.functional.utils import (gen_remote, gen_publisher,   # noqa
-                                                set_up_module as setUpModule)
+from pulp_python.tests.functional.utils import gen_remote
+from pulp_python.tests.functional.utils import set_up_module as setUpModule  # noqa:E722
 
 from pulp_smash.constants import FILE2_URL
 
@@ -38,7 +37,7 @@ class DeleteOrphansTestCase(unittest.TestCase, utils.SmokeTest):
         cls.api_client = api.Client(cls.cfg, api.json_handler)
         cls.api_client.request_kwargs['auth'] = get_auth()
         cls.cli_client = cli.Client(cls.cfg)
-        cls.sudo = () if utils.is_root(cls.cfg) else ('sudo',)
+        cls.sudo = () if cli.is_root(cls.cfg) else ('sudo',)
 
     def test_clean_orphan_content_unit(self):
         """Test whether orphan content units can be clean up.
@@ -59,7 +58,7 @@ class DeleteOrphansTestCase(unittest.TestCase, utils.SmokeTest):
         body = gen_remote(PYTHON_PYPI_URL)
         remote = self.api_client.post(PYTHON_REMOTE_PATH, body)
         self.addCleanup(self.api_client.delete, remote['_href'])
-        sync_repo(self.cfg, remote, repo)
+        sync(self.cfg, remote, repo)
         repo = self.api_client.get(repo['_href'])
         content = choice(get_content(repo)['results'])
 
@@ -76,7 +75,7 @@ class DeleteOrphansTestCase(unittest.TestCase, utils.SmokeTest):
 
         # Delete first repo version. The previous removed content unit will be
         # an orphan.
-        delete_repo_version(repo, get_repo_versions(repo)[0])
+        delete_version(repo, get_versions(repo)[0]['_href'])
         content_units = self.api_client.get(PYTHON_CONTENT_PATH)['results']
         self.assertIn(content, content_units)
         delete_orphans()

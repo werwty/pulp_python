@@ -4,13 +4,12 @@ from requests.exceptions import HTTPError
 
 from pulp_smash import api, config, selectors, utils
 from pulp_smash.tests.pulp3.constants import REPO_PATH, DISTRIBUTION_PATH, PUBLICATIONS_PATH
-from pulp_smash.tests.pulp3.utils import get_auth, publish_repo, sync_repo
-from pulp_smash.tests.pulp3.pulpcore.utils import gen_distribution, gen_repo
+from pulp_smash.tests.pulp3.utils import gen_distribution, gen_repo, get_auth, publish, sync
 
-from pulp_python.tests.functional.constants import (PYTHON_PUBLISHER_PATH, PYTHON_PYPI_URL, # noqa
+from pulp_python.tests.functional.constants import (PYTHON_PUBLISHER_PATH, PYTHON_PYPI_URL,
                                                     PYTHON_REMOTE_PATH)
-from pulp_python.tests.functional.utils import (gen_remote, gen_publisher,  # noqa
-                                               set_up_module as setUpModule)
+from pulp_python.tests.functional.utils import gen_remote, gen_publisher
+from pulp_python.tests.functional.utils import set_up_module as setUpModule  # noqa:E722
 
 
 class PublicationsTestCase(unittest.TestCase, utils.SmokeTest):
@@ -31,7 +30,7 @@ class PublicationsTestCase(unittest.TestCase, utils.SmokeTest):
             body = gen_remote(PYTHON_PYPI_URL)
             cls.remote.update(cls.client.post(PYTHON_REMOTE_PATH, body))
             cls.publisher.update(cls.client.post(PYTHON_PUBLISHER_PATH, gen_publisher()))
-            sync_repo(cls.cfg, cls.remote, cls.repo)
+            sync(cls.cfg, cls.remote, cls.repo)
         except Exception:
             cls.tearDownClass()
             raise
@@ -46,7 +45,7 @@ class PublicationsTestCase(unittest.TestCase, utils.SmokeTest):
     def test_01_create_publication(self):
         """Create a publication."""
         self.publication.update(
-            publish_repo(self.cfg, self.publisher, self.repo)
+            publish(self.cfg, self.publisher, self.repo)
         )
 
     @selectors.skip_if(bool, 'publication', False)
@@ -109,7 +108,7 @@ class PublicationsTestCase(unittest.TestCase, utils.SmokeTest):
     @selectors.skip_if(bool, 'publication', False)
     def test_06_delete(self):
         """Delete a publication."""
-        if selectors.bug_is_untestable(3354, self.cfg.pulp_version):
+        if not selectors.bug_is_fixed(3354, self.cfg.pulp_version):
             self.skipTest('https://pulp.plan.io/issues/3354')
         self.client.delete(self.publication['_href'])
         with self.assertRaises(HTTPError):

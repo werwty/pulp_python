@@ -6,13 +6,12 @@ from requests.exceptions import HTTPError
 
 from pulp_smash import api, config, utils
 from pulp_smash.tests.pulp3.constants import REPO_PATH
-from pulp_smash.tests.pulp3.utils import get_auth, get_repo_versions, sync_repo, publish_repo
-from pulp_smash.tests.pulp3.pulpcore.utils import gen_repo
+from pulp_smash.tests.pulp3.utils import gen_repo, get_auth, get_versions, sync, publish
 
 from pulp_python.tests.functional.constants import (PYTHON_CONTENT_PATH, PYTHON_PYPI_URL,
                                                     PYTHON_REMOTE_PATH, PYTHON_PUBLISHER_PATH)
-from pulp_python.tests.functional.utils import (gen_remote, gen_publisher,  # noqa
-                                                set_up_module as setUpModule)
+from pulp_python.tests.functional.utils import gen_remote, gen_publisher
+from pulp_python.tests.functional.utils import set_up_module as setUpModule  # noqa:E722
 
 
 class PublishAnyRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
@@ -46,7 +45,7 @@ class PublishAnyRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
         self.addCleanup(client.delete, remote['_href'])
         repo = client.post(REPO_PATH, gen_repo())
         self.addCleanup(client.delete, repo['_href'])
-        sync_repo(cfg, remote, repo)
+        sync(cfg, remote, repo)
         publisher = client.post(PYTHON_PUBLISHER_PATH, gen_publisher())
         self.addCleanup(client.delete, publisher['_href'])
 
@@ -58,17 +57,17 @@ class PublishAnyRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
                 repo['_versions_href'],
                 {'add_content_units': [file_content['_href']]}
             )
-        versions = get_repo_versions(repo)
-        non_latest = choice(versions[:-1])
+        versions = get_versions(repo)
+        non_latest = choice(versions[:-1])['_href']
 
         # Step 2
-        publication = publish_repo(cfg, publisher, repo)
+        publication = publish(cfg, publisher, repo)
 
         # Step 3
-        self.assertEqual(publication['repository_version'], versions[-1])
+        self.assertEqual(publication['repository_version'], versions[-1]['_href'])
 
         # Step 4
-        publication = publish_repo(cfg, publisher, repo, non_latest)
+        publication = publish(cfg, publisher, repo, non_latest)
 
         # Step 5
         self.assertEqual(publication['repository_version'], non_latest)

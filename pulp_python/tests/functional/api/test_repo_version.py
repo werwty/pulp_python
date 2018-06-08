@@ -1,3 +1,4 @@
+import time
 import unittest
 from unittest import skip
 from random import choice, randint, sample
@@ -6,17 +7,15 @@ from requests.exceptions import HTTPError
 
 from pulp_smash import api, config, selectors, utils
 from pulp_smash.tests.pulp3.constants import REPO_PATH
-from pulp_smash.tests.pulp3.utils import (
-    get_auth, get_artifact_paths, get_content, get_added_content, get_removed_content,
-    get_repo_versions, sync_repo, publish_repo, delete_repo_version
-)
-from pulp_smash.tests.pulp3.pulpcore.utils import gen_repo
+from pulp_smash.tests.pulp3.utils import (gen_repo, get_auth, get_artifact_paths, get_content,
+                                          get_added_content, get_removed_content, get_versions,
+                                          sync, publish, delete_version)
 
 from pulp_python.tests.functional.constants import (PYTHON_CONTENT_PATH, PYTHON_PYPI_URL,
                                                     PYTHON_REMOTE_PATH, PYTHON_PUBLISHER_PATH,
                                                     PYTHON_PACKAGE_COUNT)
-from pulp_python.tests.functional.utils import (gen_remote, gen_publisher,  # noqa
-                                                set_up_module as setUpModule)
+from pulp_python.tests.functional.utils import gen_remote, gen_publisher, populate_pulp
+from pulp_python.tests.functional.utils import set_up_module as setUpModule  # noqa:E722
 
 
 class AddRemoveContentTestCase(unittest.TestCase, utils.SmokeTest):
@@ -39,7 +38,7 @@ class AddRemoveContentTestCase(unittest.TestCase, utils.SmokeTest):
     def setUpClass(cls):
         """Create class-wide variables."""
         cls.cfg = config.get_config()
-        if selectors.bug_is_untestable(3502, cls.cfg.pulp_version):
+        if not selectors.bug_is_fixed(3502, cls.cfg.pulp_version):
             raise unittest.SkipTest('https://pulp.plan.io/issues/3502')
         cls.client = api.Client(cls.cfg, api.json_handler)
         cls.client.request_kwargs['auth'] = get_auth()
@@ -85,7 +84,7 @@ class AddRemoveContentTestCase(unittest.TestCase, utils.SmokeTest):
         """
         body = gen_remote(PYTHON_PYPI_URL)
         self.remote.update(self.client.post(PYTHON_REMOTE_PATH, body))
-        sync_repo(self.cfg, self.remote, self.repo)
+        sync(self.cfg, self.remote, self.repo)
         repo = self.client.get(self.repo['_href'])
 
         repo_versions = self.client.get(repo['_versions_href'])
@@ -193,21 +192,7 @@ class AddRemoveRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
     @classmethod
     def setUpClass(cls):
         """Add content to Pulp."""
-        cls.cfg = config.get_config()
-        cls.client = api.Client(cls.cfg, api.json_handler)
-        cls.client.request_kwargs['auth'] = get_auth()
-        body = gen_remote(PYTHON_PYPI_URL)
-        remote = {}
-        repo = {}
-        try:
-            remote.update(cls.client.post(PYTHON_REMOTE_PATH, body))
-            repo.update(cls.client.post(REPO_PATH, gen_repo()))
-            sync_repo(cls.cfg, remote, repo)
-        finally:
-            if remote:
-                cls.client.delete(remote['_href'])
-            if repo:
-                cls.client.delete(repo['_href'])
+        populate_pulp(cls.cfg, PYTHON_PYPI_URL)
 
         # We need at least three content units. Choosing a relatively low
         # number is useful, to limit how many repo versions are created, and
@@ -227,11 +212,11 @@ class AddRemoveRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
                 {'add_content_units': [content['_href']]}
             )
         self.repo = self.client.get(self.repo['_href'])
-        self.repo_versions = get_repo_versions(self.repo)
+        self.repo_versions = get_versions(self.repo)
 
     def test_delete_first_version(self):
         """Delete the first repository version."""
-        delete_repo_version(self.repo, self.repo_versions[0])
+        delete_version(self.repo, self.repo_versions[0])
         with self.assertRaises(HTTPError):
             get_content(self.repo, self.repo_versions[0])
         for repo_version in self.repo_versions[1:]:
@@ -246,7 +231,7 @@ class AddRemoveRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
         version is not in the new last repository version.
         """
         # Delete the last repo version.
-        delete_repo_version(self.repo, self.repo_versions[-1])
+        delete_version(self.repo, self.repo_versions[-1])
         with self.assertRaises(HTTPError):
             get_content(self.repo, self.repo_versions[-1])
 
@@ -263,7 +248,7 @@ class AddRemoveRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
     def test_delete_middle_version(self):
         """Delete a middle version."""
         index = randint(1, len(self.repo_versions) - 2)
-        delete_repo_version(self.repo, self.repo_versions[index])
+        delete_version(self.repo, self.repo_versions[index])
         with self.assertRaises(HTTPError):
             get_content(self.repo, self.repo_versions[index])
         for repo_version in self.repo_versions[index + 1:]:
@@ -278,8 +263,8 @@ class AddRemoveRepoVersionTestCase(unittest.TestCase, utils.SmokeTest):
         """
         publisher = self.client.post(PYTHON_PUBLISHER_PATH, gen_publisher())
         self.addCleanup(self.client.delete, publisher['_href'])
-        publication = publish_repo(self.cfg, publisher, self.repo)
-        delete_repo_version(self.repo)
+        publication = publish(self.cfg, publisher, self.repo)
+        delete_version(self.repo)
         with self.assertRaises(HTTPError):
             self.client.get(publication['_href'])
 
@@ -310,9 +295,139 @@ class ContentImmutableRepoVersionTestCase(unittest.TestCase):
         body = gen_remote(PYTHON_PYPI_URL)
         remote = client.post(PYTHON_REMOTE_PATH, body)
         self.addCleanup(client.delete, remote['_href'])
-        sync_repo(cfg, remote, repo)
+        sync(cfg, remote, repo)
         latest_version_href = client.get(repo['_href'])['_latest_version_href']
         with self.assertRaises(HTTPError):
             client.post(latest_version_href)
         repo = client.get(repo['_href'])
         self.assertEqual(latest_version_href, repo['_latest_version_href'])
+
+
+class FilterRepoVersionTestCase(unittest.TestCase):
+    """Test whether repository versions can be filtered.
+
+    These tests target the following issues:
+
+    * `Pulp #3238 <https://pulp.plan.io/issues/3238>`_
+    * `Pulp #3536 <https://pulp.plan.io/issues/3536>`_
+    * `Pulp #3557 <https://pulp.plan.io/issues/3557>`_
+    * `Pulp #3558 <https://pulp.plan.io/issues/3558>`_
+    * `Pulp Smash #880 <https://github.com/PulpQE/pulp-smash/issues/880>`_
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Create class-wide variables.
+
+        Add content to Pulp.
+        """
+        cls.cfg = config.get_config()
+        cls.client = api.Client(cls.cfg, api.json_handler)
+        cls.client.request_kwargs['auth'] = get_auth()
+        populate_pulp(cls.cfg)
+        cls.contents = cls.client.get(PYTHON_CONTENT_PATH)['results']
+
+    def setUp(self):
+        """Create a repository and give it new versions."""
+        self.repo = self.client.post(REPO_PATH, gen_repo())
+        self.addCleanup(self.client.delete, self.repo['_href'])
+        for content in self.contents[:10]:  # slice is arbitrary upper bound
+            self.client.post(
+                self.repo['_versions_href'],
+                {'add_content_units': [content['_href']]}
+            )
+            time.sleep(1)
+        self.repo = self.client.get(self.repo['_href'])
+
+    def test_filter_invalid_content(self):
+        """Filter repository version by invalid content."""
+        with self.assertRaises(HTTPError):
+            self.filter_repo_version({'content': utils.uuid4()})
+
+    def test_filter_valid_content(self):
+        """Filter repository versions by valid content."""
+        content = choice(self.contents)
+        repo_versions = self.filter_repo_version({'content': content['_href']})['results']
+        for repo_version in repo_versions:
+            self.assertIn(
+                self.client.get(content['_href']),
+                get_content(self.repo, repo_version['_href'])['results']
+            )
+
+    def test_filter_invalid_date(self):
+        """Filter repository version by invalid date."""
+        criteria = utils.uuid4()
+        version_filters = (
+            {'created': criteria},
+            {'created__gt': criteria, 'created__lt': criteria},
+            {'created__gte': criteria, 'created__lte': criteria},
+            {'created__range': ','.join((criteria, criteria))}
+        )
+        for params in version_filters:
+            with self.subTest(params=params):
+                page = self.filter_repo_version(params)
+                self.assertEqual(len(page['results']), 0, page['results'])
+
+    def test_filter_valid_date(self):
+        """Filter repository version by a valid date."""
+        dates = self.get_repo_versions_attr('created')
+        version_filters = (
+            ({'created': dates[0]}, 1),
+            ({'created__gt': dates[0], 'created__lt': dates[-1]}, len(dates) - 2),
+            ({'created__gte': dates[0], 'created__lte': dates[-1]}, len(dates)),
+            ({'created__range': ','.join((dates[0], dates[1]))}, 2)
+        )
+        for params, num_results in version_filters:
+            with self.subTest(params=params):
+                results = self.filter_repo_version(params)['results']
+                self.assertEqual(len(results), num_results, results)
+
+    def test_filter_invalid_version(self):
+        """Filter repository version by an invalid version number."""
+        criteria = utils.uuid4()
+        version_filters = (
+            {'number': criteria},
+            {'number__gt': criteria, 'number__lt': criteria},
+            {'number__gte': criteria, 'number__lte': criteria},
+            {'number__range': ','.join((criteria, criteria))}
+        )
+        for params in version_filters:
+            with self.subTest(params=params):
+                page = self.filter_repo_version(params)
+                self.assertEqual(len(page['results']), 0, page['results'])
+
+    def test_filter_valid_version(self):
+        """Filter repository version by a valid version number."""
+        numbers = self.get_repo_versions_attr('number')
+        version_filters = (
+            ({'number': numbers[0]}, 1),
+            ({'number__gt': numbers[0], 'number__lt': numbers[-1]}, len(numbers) - 2),
+            ({'number__gte': numbers[0], 'number__lte': numbers[-1]}, len(numbers)),
+            ({'number__range': '{},{}'.format(numbers[0], numbers[1])}, 2)
+        )
+        for params, num_results in version_filters:
+            with self.subTest(params=params):
+                results = self.filter_repo_version(params)['results']
+                self.assertEqual(len(results), num_results, results)
+
+    def test_deleted_version_filter(self):
+        """Delete a repository version and filter by its number."""
+        numbers = self.get_repo_versions_attr('number')
+        delete_version(self.repo)
+        page = self.filter_repo_version({'number': numbers[-1]})
+        self.assertEqual(len(page['results']), 0, page['results'])
+
+    def filter_repo_version(self, params):
+        """Filter repository version based on the given criteria."""
+        return self.client.get(self.repo['_versions_href'], params=params)
+
+    def get_repo_versions_attr(self, attr):
+        """ Get an ``attr`` about each version of ``self.repo``.
+        Return as sorted list.
+        """
+        attributes = [
+            repo_version[attr] for repo_version in
+            self.client.get(self.repo['_versions_href'])['results']
+        ]
+        attributes.sort()
+        return attributes
