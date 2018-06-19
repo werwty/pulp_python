@@ -239,9 +239,16 @@ class PythonRemoteSerializer(core_serializers.RemoteSerializer):
     A Serializer for PythonRemote.
     """
 
-    projects = ProjectSpecifierSerializer(
+    include = ProjectSpecifierSerializer(
         required=False,
-        many=True
+        many=True,
+        instance=python_models.ProjectSpecifier.objects.filter(include=True)
+    )
+
+    exclude = ProjectSpecifierSerializer(
+        required=False,
+        many =True,
+        instance=python_models.ProjectSpecifier.objects.filter(include=False)
     )
 
     class Meta:
@@ -296,12 +303,22 @@ class PythonRemoteSerializer(core_serializers.RemoteSerializer):
             models.PythonRemote: the created PythonRemote
 
         """
-        projects = validated_data.pop('projects', [])
+        includes = validated_data.pop('includes', [])
+        excludes = validated_data.pop('excludes', [])
+
 
         python_remote = python_models.PythonRemote.objects.create(**validated_data)
-        for project in projects:
+        for project in includes:
             digests = project.pop('digests', None)
-            specifier = python_models.ProjectSpecifier.objects.create(remote=python_remote,
+            specifier = python_models.ProjectSpecifier.objects.create(remote=python_remote, include=True,
+                                                                      **project)
+            if digests:
+                for digest in digests:
+                    python_models.DistributionDigest.objects.create(project_specifier=specifier,
+                                                                    **digest)
+        for project in excludes:
+            digests = project.pop('digests', None)
+            specifier = python_models.ProjectSpecifier.objects.create(remote=python_remote, include=False,
                                                                       **project)
             if digests:
                 for digest in digests:

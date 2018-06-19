@@ -56,10 +56,11 @@ def sync(remote_pk, repository_pk):
                 .format(repository=repository.name, remote=remote.name)
             )
 
-            project_specifiers = python_models.ProjectSpecifier.objects.filter(remote=remote).all()
+            includes = python_models.ProjectSpecifier.objects.filter(remote=remote, include=True).all()
+            excludes = python_models.ProjectSpecifier.objects.filter(remote=remote, include=False).all()
 
             inventory_keys = _fetch_inventory(base_version)
-            remote_metadata = _fetch_specified_metadata(remote, project_specifiers)
+            remote_metadata = _fetch_specified_metadata(remote, includes, excludes)
             remote_keys = set([content['filename'] for content in remote_metadata])
 
             delta = _find_delta(inventory=inventory_keys, remote=remote_keys)
@@ -92,7 +93,7 @@ def _fetch_inventory(version):
     return inventory
 
 
-def _fetch_specified_metadata(remote, project_specifiers):
+def _fetch_specified_metadata(remote, includes, excludes):
     """
     Fetch metadata for content units matching project specifiers from the remote.
 
@@ -100,12 +101,15 @@ def _fetch_specified_metadata(remote, project_specifiers):
         project_specifiers (dict): Information about a project and which versions of a project
             to filter
 
+    These units are the difference between the include list and the exclude list.
+
     Returns:
         list: of contentunit metadata.
 
     """
     remote_units = []
-    for project in project_specifiers:
+
+    for project in includes:
 
         digests = python_models.DistributionDigest.objects.filter(project_specifier=project)
 
@@ -117,30 +121,46 @@ def _fetch_specified_metadata(remote, project_specifiers):
         metadata = json.load(open(downloader.path))
         for version, packages in metadata['releases'].items():
             for package in packages:
-                # If neither specifiers nor digests have been set, then we should add the unit
-                if not project.version_specifier and not digests.exists():
+                if project.name in excludes:
+                    whatnottosync=excludes[project.name]
+                    if not whatnottosync.version_specifier and not whatnottosync.digest:
+                        continue
+                    specifier = specifiers.SpecifierSet(project.version_specifier)
+                    # Note: SpecifierSet("").contains(version) will return true for released versions
+                    # SpecifierSet("").contains('3.0.0') returns True
+                    # SpecifierSet("").contains('3.0.0b1') returns False
+                    if specifier.contains(version):
+                        continue
+                    digests = python_models.DistributionDigest.objects.filter(project_specifier=whatnottosync)
+                    if digests.contains(whatnottosync.digest):
+                        continue
                     remote_units.append(parse_metadata(metadata['info'], version, package))
-                    continue
-
-                specifier = specifiers.SpecifierSet(project.version_specifier)
-
-                # Note: SpecifierSet("").contains(version) will return true for released versions
-                # SpecifierSet("").contains('3.0.0') returns True
-                # SpecifierSet("").contains('3.0.0b1') returns False
-                if specifier.contains(version):
-
-                    # add the package if the project specifier does not have an associated digest
-                    if not digests.exists():
-                        remote_units.append(parse_metadata(metadata['info'], version, package))
 
                     # otherwise check each digest to see if it matches the specifier
-                    else:
-                        for type, digest in package['digests'].items():
-                            if digests.filter(type=type, digest=digest).exists():
-                                remote_units.append(
-                                    parse_metadata(metadata['info'], version, package)
-                                )
-                                break
+                else:
+                    if not project.version_specifier and not digests.exists():
+                        remote_units.append(parse_metadata(metadata['info'], version, package))
+                        continue
+
+                    specifier = specifiers.SpecifierSet(project.version_specifier)
+
+                    # Note: SpecifierSet("").contains(version) will return true for released versions
+                    # SpecifierSet("").contains('3.0.0') returns True
+                    # SpecifierSet("").contains('3.0.0b1') returns False
+                    if specifier.contains(version):
+
+                        # add the package if the project specifier does not have an associated digest
+                        if not digests.exists():
+                            remote_units.append(parse_metadata(metadata['info'], version, package))
+
+                        # otherwise check each digest to see if it matches the specifier
+                        else:
+                            for type, digest in package['digests'].items():
+                                if digests.filter(type=type, digest=digest).exists():
+                                    remote_units.append(parse_metadata(metadata['info'],
+                                                                       version,
+                                                                       package))
+                break
     return remote_units
 
 
