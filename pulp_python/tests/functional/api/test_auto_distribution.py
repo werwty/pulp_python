@@ -7,11 +7,23 @@ from requests import HTTPError
 
 from pulp_smash import api, config
 from pulp_smash.tests.pulp3.constants import REPO_PATH, DISTRIBUTION_PATH
-from pulp_smash.tests.pulp3.utils import (delete_orphans, gen_repo, gen_distribution, get_auth,
-                                          get_added_content, get_versions, sync, publish)
+from pulp_smash.tests.pulp3.utils import (
+    delete_orphans,
+    gen_repo,
+    gen_distribution,
+    get_auth,
+    get_added_content,
+    get_versions,
+    sync,
+    publish
+)
 
-from pulp_python.tests.functional.constants import (PYTHON_PUBLISHER_PATH, PYTHON_REMOTE_PATH,
-                                                    PYTHON_PYPI_URL, PYTHON_CONTENT_PATH)
+from pulp_python.tests.functional.constants import (
+    PYTHON_CONTENT_PATH,
+    PYTHON_PUBLISHER_PATH,
+    PYTHON_PYPI_URL,
+    PYTHON_REMOTE_PATH
+)
 from pulp_python.tests.functional.utils import gen_remote, gen_publisher, populate_pulp
 from pulp_python.tests.functional.utils import set_up_module as setUpModule  # noqa:E722
 
@@ -104,8 +116,7 @@ class AutoDistributionTestCase(unittest.TestCase):
 
         # Assert that distribution was updated as per step 8.
         self.assertEqual(distribution['publication'], publication['_href'])
-        unit_path = get_added_content(
-            repo, last_version_href)['results'][0]['relative_path']
+        unit_path = get_added_content(repo, last_version_href)[0]['relative_path']
         unit_url = self.cfg.get_systems('api')[0].roles['api']['scheme']
         unit_url += '://' + distribution['base_url'] + '/'
         unit_url = urljoin(unit_url, unit_path)
@@ -129,6 +140,7 @@ class SetupAutoDistributionTestCase(unittest.TestCase):
 
     def test_all(self):
         """Verify the set up of parameters related to auto distribution.
+
         This test targets the following issues:
         * `Pulp #3295 <https://pulp.plan.io/issues/3295>`_
         * `Pulp #3392 <https://pulp.plan.io/issues/3392>`_
@@ -174,6 +186,7 @@ class SetupAutoDistributionTestCase(unittest.TestCase):
 
     def try_create_distribution(self, **kwargs):
         """Unsuccessfully create a distribution.
+
         Merge the given kwargs into the body of the request.
         """
         body = gen_distribution()
@@ -183,6 +196,7 @@ class SetupAutoDistributionTestCase(unittest.TestCase):
 
     def try_update_distribution(self, distribution, **kwargs):
         """Unsuccessfully update a distribution with HTTP PATCH.
+
         Use the given kwargs as the body of the request.
         """
         with self.assertRaises(HTTPError):
