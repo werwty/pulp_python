@@ -239,20 +239,21 @@ class PythonRemoteSerializer(core_serializers.RemoteSerializer):
     A Serializer for PythonRemote.
     """
 
-    include = ProjectSpecifierSerializer(
+    includes = ProjectSpecifierSerializer(
         required=False,
         many=True,
-        instance=python_models.ProjectSpecifier.objects.filter(include=True)
+        source='includes_specifiers'
     )
 
-    exclude = ProjectSpecifierSerializer(
+    excludes = ProjectSpecifierSerializer(
         required=False,
-        many =True,
-        instance=python_models.ProjectSpecifier.objects.filter(include=False)
+        many=True,
+        source='excludes_specifiers',
     )
+
 
     class Meta:
-        fields = core_serializers.RemoteSerializer.Meta.fields + ('projects',)
+        fields = core_serializers.RemoteSerializer.Meta.fields + ('includes', 'excludes')
         model = python_models.PythonRemote
 
     @transaction.atomic

@@ -167,3 +167,9 @@ class PythonRemote(Remote):
     """
 
     TYPE = 'python'
+
+    def includes_specifiers(self):
+        return ProjectSpecifier.objects.filter(remote=self, include=True)
+
+    def excludes_specifiers(self):
+        return ProjectSpecifier.objects.filter(remote=self, include=False)
