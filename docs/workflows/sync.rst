@@ -107,7 +107,14 @@ Sync repository foo with remote
 Use the remote object to kick off a synchronize task by specifying the repository to
 sync with. You are telling pulp to fetch content from the remote and add to the repository::
 
+By defaule Pulp uses ``mirror`` mode sync. This adds new content from the
+remote repository and removes content from the local repository until
+the local repository "mirrors" the remote. You can also tell Pulp not to
+mirror, and Pulp will add new content from the remote repository to the
+local repository and not remove any content from the local repository.
+
     $ http POST $BASE_ADDR$REMOTE_HREF'sync/' repository=$REPO_HREF
+    mirror=False
 
 Response::
 
